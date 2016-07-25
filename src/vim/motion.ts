@@ -1,5 +1,4 @@
-import { MotionAction, Motion, VimDocument, WordType, Position } from "./common";
-import * as vscode from "vscode";
+import { MotionAction, Motion, VimDocument, WordType } from "./common";
 
 export function calculateMotion(doc: VimDocument, motion: MotionAction, index: number): Motion {
     if (motion.motion === "line") {
@@ -9,7 +8,7 @@ export function calculateMotion(doc: VimDocument, motion: MotionAction, index: n
             end: endPosition.index,
             inclusive: false,
             linewise: true,
-        }
+        };
     }
 
     if (motion.motion === "jump") {
@@ -48,7 +47,7 @@ export function calculateMotion(doc: VimDocument, motion: MotionAction, index: n
                 end: index + motion.count,
                 inclusive: false,
                 linewise: false,
-            }
+            };
         }
         return {
             start: index,
@@ -70,7 +69,7 @@ export function calculateMotion(doc: VimDocument, motion: MotionAction, index: n
             end: position.index,
             inclusive: false,
             linewise: true,
-        }
+        };
     }
 
     if (motion.motion === "k") {
@@ -378,7 +377,6 @@ export function calculateMotion(doc: VimDocument, motion: MotionAction, index: n
 
         // % with no count goes to matching next brace.
         let endIndex = index;
-        let k = 0;
         const matchingBraces = {
             "[": "]", "]": "[",
             "{": "}", "}": "{",
@@ -388,7 +386,7 @@ export function calculateMotion(doc: VimDocument, motion: MotionAction, index: n
         for (; endIndex <= text.length; endIndex++) {
             if (endIndex === text.length || text[endIndex] === "\n")
                 return null;
-            
+
             if (/^[\(\[\{]$/.test(text[endIndex])) {
                 const brace = text[endIndex];
                 const matchingBrace = matchingBraces[brace];

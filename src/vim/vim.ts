@@ -1,13 +1,13 @@
-import * as vscode from 'vscode';
-import { 
-    VimMode, VimAction, Range, WordType, Word, VimDocument, Motion,
+import * as vscode from "vscode";
+import {
+    VimMode, VimAction, Range, VimDocument, Motion,
     ObjectAction, MotionAction, ChangeModeAction, OperatorAction, InstantAction, ReplaceAction,
 } from "./common";
 import { calculateMotion } from "./motion";
 
 interface VimRegister {
-    linewise: boolean,
-    text: string,
+    linewise: boolean;
+    text: string;
 }
 
 function modeText(mode: VimMode): string {
@@ -29,7 +29,7 @@ function setToLetterGroups(indexSet: number[]): ({ [letter: string]: number[] })
     let k = 0;
     indexSet.forEach(i => {
         letterGroups[String.fromCharCode(65 + k)].push(i);
-        k = (k + 1) % 26
+        k = (k + 1) % 26;
     });
 
     return letterGroups;
@@ -75,17 +75,17 @@ export class Vim {
         this.enteredCount = "";
         this.enteredText = "";
         this.lastAction = null;
-        
+
         this.decorators = {};
         for (let i = 0; i < 26; i++) {
             let c = String.fromCharCode(65 + i);
-            this.decorators[c] = vscode.window.createTextEditorDecorationType(<any>{
+            this.decorators[c] = vscode.window.createTextEditorDecorationType(<any> {
                 isWholeLine: false,
                 before: {
                     color: "rgba(255, 255, 255, 1)",
                     backgroundColor: "rgba(0, 0, 255, 1);position: absolute",
                     contentText: c,
-                }
+                },
             });
         }
 
@@ -93,7 +93,17 @@ export class Vim {
         this.marks = {};
     }
 
-    private setMode(mode: VimMode, reset: boolean) {
+    public updateSelection(selections: vscode.Selection[]) {
+        if (this.mode === VimMode.Visual && selections.every(s => s.start.isEqual(s.end))) {
+            this.setMode(VimMode.Normal, true);
+        } else if ((this.mode === VimMode.Normal || this.mode === VimMode.OperatorPending) &&
+            selections.some(s => !s.start.isEqual(s.end))) {
+            this.setMode(VimMode.Visual, true);
+        }
+        this.cleanSelection(selections);
+    }
+
+    public setMode(mode: VimMode, reset: boolean) {
         if (reset) {
             this.operatorCount = "";
             this.pseudoMode = null;
@@ -111,16 +121,14 @@ export class Vim {
     }
 
     public updateUI() {
-        if (!this.modeStatusBar) {
+        if (!this.modeStatusBar)
             this.modeStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
-        }
 
         if (vscode.window.activeTextEditor) {
-            if (this.mode === VimMode.Insert || this.mode === VimMode.Visual) {
+            if (this.mode === VimMode.Insert || this.mode === VimMode.Visual)
                 vscode.window.activeTextEditor.options = { cursorStyle: vscode.TextEditorCursorStyle.Line };
-            } else if (this.mode === VimMode.Normal) {
+            else if (this.mode === VimMode.Normal)
                 vscode.window.activeTextEditor.options = { cursorStyle: vscode.TextEditorCursorStyle.Block };
-            }
         }
 
         this.modeStatusBar.text = modeText(this.mode);
@@ -159,11 +167,13 @@ export class Vim {
                 case VimMode.Visual:
                     await this.visualKey(key);
                     break;
+
+                default:
+                    this.setMode(VimMode.Normal, true);
             }
 
-            if (!this.enteredTextStatusBar) {
+            if (!this.enteredTextStatusBar)
                 this.enteredTextStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
-            }
             this.enteredTextStatusBar.text = this.enteredText;
             this.enteredTextStatusBar.show();
         } catch (e) {
@@ -171,16 +181,178 @@ export class Vim {
         }
     }
 
-    private static findLeftRightRange(leftCharacter: string, rightCharacter: string, index: number, includeEnclosing: boolean, crossNewlines: boolean): Range {
+    public cleanSelection(selections: vscode.Selection[]) {
+        if (this.mode === VimMode.Normal || this.mode === VimMode.OperatorPending) {
+            let updateSelections = false;
+            let newSelections = selections.map(s => {
+                if (s.start.character === 0 || s.start.compareTo(s.end) !== 0)
+                    return s;
+
+                if (vscode.window.activeTextEditor.document.validatePosition(s.start.translate(0, 1)).character === s.start.character) {
+                    updateSelections = true;
+                    return new vscode.Selection(s.start.line, s.start.character - 1, s.start.line, s.start.character - 1);
+                } else {
+                    return s;
+                }
+            });
+            if (updateSelections)
+                vscode.window.activeTextEditor.selections = newSelections;
+        }
+    }
+
+    public getNormalCommand(key: string): VimAction {
+        if (this.pseudoMode === "f") {
+            this.pseudoMode = null;
+            this.lastLineSearch = { motion: this.pseudoModeParameter, target: key };
+            return { type: "motion", motion: this.pseudoModeParameter, target: key, count: Number(this.enteredCount || "1") };
+        }
+
+        if (this.pseudoMode === "g") {
+            this.pseudoMode = null;
+            if (key === "g")
+                return { type: "motion", motion: "gg", count: Number(this.enteredCount || "0") };
+            if (key === "I")
+                return { type: "changeMode", newMode: "gI", count: 1 };
+            this.setMode(VimMode.Normal, true);
+            return null;
+        }
+
+        if (this.pseudoMode === "r") {
+            this.pseudoMode = null;
+            return { type: "replace", replace: key, count: Number(this.enteredCount || "1") };
+        }
+
+        if (this.pseudoMode === "Q") {
+            return this.jumpKey(key);
+        }
+
+        if (this.pseudoMode === '"') {
+            this.registerTarget = key;
+            this.pseudoMode = null;
+            return null;
+        }
+
+        if (this.pseudoMode === "m") {
+            this.pseudoMode = null;
+            return { type: "instant", instant: "m", count: 1, register: this.registerTarget, target: key };
+        }
+
+        if (this.pseudoMode === "`" || this.pseudoMode === "'") {
+            const markType = this.pseudoMode;
+            this.pseudoMode = null;
+            return { type: "motion", motion: markType, count: 1, target: key };
+        }
+
+        // Object
+        if (this.pseudoMode === "o") {
+            this.pseudoMode = null;
+            if (key.match(/^[wWsp\]\[\)\(<>t{}"'bB]$/)) {
+                return { type: "object", range: this.objectRange, object: key, count: Number(this.enteredCount || "1") };
+            }
+        }
+
+        if (this.mode === VimMode.OperatorPending) {
+            if (key === this.operatorPending)
+                return { type: "motion", motion: "line", count: Number(this.enteredCount || "1") };
+        }
+
+        if (this.mode === VimMode.Visual) {
+            if (key.match(/^[dcCRSsxuUyY]$/))
+                return { type: "instant", instant: key, count: Number(this.enteredCount || "1"), register: this.registerTarget };
+        }
+
+        if (key.match(/^[1-9]$/) || (key === "0" && this.enteredCount.length > 0)) {
+            this.enteredCount += key;
+            return null;
+        }
+
+        // Motion
+        if (key.match(/^[0wWeEhjkl$^bBG\-\n+_;,%]$/)) {
+            if (key === "G" || key === "%")
+                return { type: "motion", motion: key, count: Number(this.enteredCount || "0") };
+            return { type: "motion", motion: key, count: Number(this.enteredCount || "1") };
+        }
+
+        if (key.match(/^[fFtT]$/)) {
+            this.pseudoMode = "f";
+            this.pseudoModeParameter = key;
+            return null;
+        }
+
+        if (key.match(/^[grmQ"'`]$/)) {
+            this.pseudoMode = key;
+            return null;
+        }
+
+        if (this.mode === VimMode.Normal) {
+            // Mode switch
+            if (key.match(/^[iIaAoOvV]$/))
+                return { type: "changeMode", newMode: key, count: Number(this.enteredCount || "1") };
+
+            // Operators
+            if (key.match(/^[cdy]$/))
+                return { type: "operator", operator: key };
+
+            // Action
+            if (key.match(/^[upPxXCDYSs]$/))
+                return { type: "instant", instant: key, count: Number(this.enteredCount || "1"), register: this.registerTarget };
+
+            if (key === ".") {
+                this.doNormalAction(this.lastAction);
+                this.setMode(VimMode.Normal, true);
+                return null;
+            }
+        } else if (this.mode === VimMode.Visual || this.mode === VimMode.OperatorPending) {
+            if (key.match(/^[ia]$/)) {
+                this.pseudoMode = "o";
+                this.objectRange = key;
+                return null;
+            }
+        }
+
+        this.setMode(VimMode.Normal, true);
+        return null;
+    }
+
+    public documentChanged(e: vscode.TextDocumentChangeEvent) {
+        if (e) {
+            for (const change of e.contentChanges) {
+                for (const c in this.marks) {
+                    if (!this.marks[c])
+                        continue;
+                    if (change.range.contains(this.marks[c]))
+                        this.marks[c] = null;
+                }
+            }
+
+            for (const change of e.contentChanges) {
+                let netLines = -Math.abs(change.range.end.line - change.range.start.line) +
+                    (change.text.match(/\n/g) || []).length;
+                const newMarks: { [letter: string]: vscode.Position } = {};
+                for (const c in this.marks) {
+                    if (!this.marks.hasOwnProperty(c))
+                        continue;
+                    if (!this.marks[c] || this.marks[c].isBefore(change.range.start) ||
+                        this.marks[c].isBefore(change.range.end)) {
+                        newMarks[c] = this.marks[c];
+                        continue;
+                    }
+                    newMarks[c] = this.marks[c].translate(netLines, 0);
+                }
+                this.marks = newMarks;
+            }
+        }
+    }
+
+    private static findLeftRightRange(leftCharacter: string, rightCharacter: string,
+                                      index: number, includeEnclosing: boolean, crossNewlines: boolean): Range {
         // TODO: detect if we're on a character
         let startIndex = Vim.findNextChar(leftCharacter, index, -1, crossNewlines);
-        if (startIndex === -1) {
+        if (startIndex === -1)
             return null;
-        }
         let endIndex = Vim.findNextChar(rightCharacter, index, 1, crossNewlines);
-        if (endIndex === -1) {
+        if (endIndex === -1)
             return null;
-        }
         // TODO: return null on non-enclosed adjacent characters <>
         return includeEnclosing ? { start: startIndex, end: endIndex } : { start: startIndex + 1, end: endIndex - 1 };
     }
@@ -188,21 +360,18 @@ export class Vim {
     private static findNextChar(character: string, startIndex: number, direction: number, crossNewlines: boolean): number {
         const doc = vscode.window.activeTextEditor.document.getText();
         for (let i = startIndex; i > 0 && i < doc.length; i += direction) {
-            if (!crossNewlines && doc[i] === "\n") {
+            if (!crossNewlines && doc[i] === "\n")
                 return -1;
-            }
-            if (doc[i] === character) {
+            if (doc[i] === character)
                 return i;
-            }
         }
         return -1;
     }
 
     private static findEnclosedRange(character: string, index: number, includeEnclosing: boolean, crossNewlines: boolean): Range {
         const doc = vscode.window.activeTextEditor.document.getText();
-        if (doc[index] === character) {
+        if (doc[index] === character)
             // TODO: Count from start of line
-        }
 
         return Vim.findLeftRightRange(character, character, index, includeEnclosing, crossNewlines);
     }
@@ -213,7 +382,7 @@ export class Vim {
             return {
                 start: word.start,
                 end: word.end,
-            }
+            };
         }
 
         switch (object.object) {
@@ -225,12 +394,12 @@ export class Vim {
             case "[":
             case "]":
                 return Vim.findLeftRightRange("[", "]", index, object.range === "a", true);
-            
+
             case "(":
             case ")":
             case "b":
                 return Vim.findLeftRightRange("(", ")", index, object.range === "a", true);
-            
+
             case "{":
             case "}":
             case "B":
@@ -239,9 +408,10 @@ export class Vim {
             case "<":
             case ">":
                 return Vim.findLeftRightRange("<", ">", index, object.range === "a", true);
-        }
 
-        return null;
+            default:
+                return null;
+        }
     }
 
     private jumpKey(key: string): MotionAction {
@@ -252,9 +422,11 @@ export class Vim {
             const text = vscode.window.activeTextEditor.document.getText();
             let match;
             const newIndexSet = [];
+            /* tslint:disable */
             while (match = searchRegex.exec(text)) {
                 newIndexSet.push(match.index);
             }
+            /* tslint:enable */
             this.indexSet = setToLetterGroups(newIndexSet);
         } else {
             const newIndexSet = this.indexSet[key];
@@ -287,7 +459,6 @@ export class Vim {
 
     private async performOperation(operator: string, motion: Motion) {
         const active = vscode.window.activeTextEditor;
-        const selStart = active.selection.start;
         const doc = new VimDocument(vscode.window.activeTextEditor.document);
 
         if (motion.end < motion.start) {
@@ -295,9 +466,8 @@ export class Vim {
             motion.start = motion.end;
             motion.end = temp;
         }
-        if (motion.inclusive) {
+        if (motion.inclusive)
             motion.end++;
-        }
 
         if (motion.linewise) {
             const startLine = doc.getLineByIndex(motion.start);
@@ -320,24 +490,24 @@ export class Vim {
                     // If we're deleting the last line, we can't get rid of the trailing newline (vscode bug?), so instead, push the
                     // starting position back to remove the newline from the line above. The two cancel out and achieve the expected
                     // behavior of no trailing newline.
-                    motionIncludesLastLine = endLine.lineNumber === doc.lineCount() - 1
+                    motionIncludesLastLine = endLine.lineNumber === doc.lineCount() - 1;
                     motionIncludesFirstLine = startLineNumber === 0;
                     if (motionIncludesFirstLine && motionIncludesLastLine) {
                         // The range is the entire document, so just delete everything.
                         this.registers[this.registerTarget] = { linewise: true, text: doc.getText() };
-                        //e.delete(new vscode.Range(new vscode.Position(0, 0), endLine.rangeIncludingLineBreak.end));
                         e.delete(active.document.validateRange(new vscode.Range(new vscode.Position(0, 0), new vscode.Position(Infinity, Infinity))));
                         return;
                     }
-                    const startPosition = motionIncludesLastLine ? 
+                    const startPosition = motionIncludesLastLine ?
                         active.document.lineAt(active.document.positionAt(motion.start).line - 1).range.end :
                         active.document.lineAt(active.document.positionAt(motion.start).line).rangeIncludingLineBreak.start;
                     const endPosition = new vscode.Position(endLine.lineNumber + 1, 0);
-
-                    //this.registers[this.registerTarget] = { linewise: true, text: active.document.getText(new vscode.Range(startPosition, endPosition)) };
+                    // TODO: Should go into a register
+                    // this.registers[this.registerTarget] = { linewise: true, text: active.document.getText(new vscode.Range(startPosition, endPosition)) };
                     e.delete(new vscode.Range(startPosition, endPosition));
                 } else {
-                    //this.registers[this.registerTarget] = { linewise: false, text: doc.getText().substring(motion.start, motion.end) };
+                    // TODO: Should go into a register
+                    // this.registers[this.registerTarget] = { linewise: false, text: doc.getText().substring(motion.start, motion.end) };
                     e.delete(new vscode.Selection(active.document.positionAt(motion.start), active.document.positionAt(motion.end)));
                     active.selection = new vscode.Selection(active.document.positionAt(motion.start), active.document.positionAt(motion.start));
                 }
@@ -346,16 +516,14 @@ export class Vim {
             // TODO: Do this a less terrible way.
             if (motion.linewise && operator === "c") {
                 if (motionIncludesLastLine) {
-                    if (!motionIncludesFirstLine) {
+                    if (!motionIncludesFirstLine)
                         await vscode.commands.executeCommand("editor.action.insertLineAfter");
-                    }
                 } else {
                     await vscode.commands.executeCommand("editor.action.insertLineBefore");
                 }
             } else if (motion.linewise && operator === "d") {
-                if (motionIncludesLastLine) {
+                if (motionIncludesLastLine)
                     await vscode.commands.executeCommand("cursorHome");
-                }
             }
             this.cleanSelection(vscode.window.activeTextEditor.selections);
         }
@@ -363,12 +531,11 @@ export class Vim {
 
     private calculateMotion(doc: VimDocument, motion: MotionAction, index: number): Motion {
         if (motion.motion === "`" || motion.motion === "'") {
-            if (!this.marks[motion.target]) {
+            if (!this.marks[motion.target])
                 return null;
-            }
             const mark = this.marks[motion.target];
             const linewise = motion.motion === "'";
-            const endIndex = 
+            const endIndex =
                 doc.positionFromLine(mark.line, linewise ? doc.getLine(mark.line).firstNonWhitespaceCharacterIndex : mark.character).index;
 
             return {
@@ -376,7 +543,7 @@ export class Vim {
                 end: endIndex,
                 linewise: motion.motion === "'",
                 inclusive: false,
-            }
+            };
         }
 
         if (motion.motion === ";" || motion.motion === ",") {
@@ -389,8 +556,6 @@ export class Vim {
                 }[lineMotion];
             }
             let count = motion.count;
-            if (lineMotion.toLowerCase() === "t") {
-            }
             const calculatedMotion = calculateMotion(doc, {
                 type: "motion",
                 motion: lineMotion,
@@ -415,7 +580,7 @@ export class Vim {
 
     private async keyOperatorPending(key: string) {
         if (key === "<esc>") {
-            vscode.window.activeTextEditor.selections = vscode.window.activeTextEditor.selections.map(s => 
+            vscode.window.activeTextEditor.selections = vscode.window.activeTextEditor.selections.map(s =>
                 new vscode.Selection(s.active, s.active)
             );
             return this.setMode(VimMode.Normal, true);
@@ -426,18 +591,16 @@ export class Vim {
         const doc = new VimDocument(vscode.window.activeTextEditor.document);
 
         const command = this.getNormalCommand(key);
-        if (!command) {
+        if (!command)
             return;
-        }
 
         if (command.type === "motion") {
             const motionCommand = command as MotionAction;
             motionCommand.count = Number(this.enteredCount || "1") * Number(this.operatorCount || "1");
             // Hack to clear out the count for commands that treat null differently than 1.
             if (motionCommand.motion === "G" || motionCommand.motion === "gg" || motionCommand.motion === "%") {
-                if (!this.enteredCount && !this.operatorCount) {
+                if (!this.enteredCount && !this.operatorCount)
                     motionCommand.count = 0;
-                }
             }
             // Hack to turn cw -> ce, which is default Vim behavior
             if (this.operatorPending === "c") {
@@ -465,7 +628,7 @@ export class Vim {
                 await active.edit(e => {
                     e.delete(new vscode.Selection(active.document.positionAt(object.start), active.document.positionAt(object.end + 1)));
                     active.selection = new vscode.Selection(active.document.positionAt(object.start), active.document.positionAt(object.start));
-                    
+
                 });
                 this.setMode(this.operatorPending === "c" ? VimMode.Insert : VimMode.Normal, true);
                 this.cleanSelection(vscode.window.activeTextEditor.selections);
@@ -477,7 +640,7 @@ export class Vim {
 
     private async visualKey(key: string) {
         if (key === "<esc>") {
-            vscode.window.activeTextEditor.selections = vscode.window.activeTextEditor.selections.map(s => 
+            vscode.window.activeTextEditor.selections = vscode.window.activeTextEditor.selections.map(s =>
                 new vscode.Selection(s.active, s.active)
             );
             return this.setMode(VimMode.Normal, true);
@@ -488,16 +651,14 @@ export class Vim {
         const doc = new VimDocument(vscode.window.activeTextEditor.document);
 
         const command = this.getNormalCommand(key);
-        if (!command) {
+        if (!command)
             return;
-        }
 
         if (command.type === "motion") {
             const motion = this.calculateMotion(doc, command as MotionAction, active.document.offsetAt(activeCursor));
             if (motion) {
-                if (motion.inclusive) {
+                if (motion.inclusive)
                     motion.end++;
-                }
                 active.selection = new vscode.Selection(active.selection.anchor, active.document.positionAt(motion.end));
                 active.revealRange(active.selection);
             }
@@ -511,9 +672,8 @@ export class Vim {
             };
             switch (instant.instant) {
                 case "x":
-                    if (instant.instant === "x") {
+                    if (instant.instant === "x")
                         instant.instant = "d";
-                    }
                 case "d":
                 case "c":
                 case "y":
@@ -522,15 +682,12 @@ export class Vim {
                     this.setMode(instant.instant === "c" ? VimMode.Insert : VimMode.Normal, true);
                     break;
 
-
                 case "X":
-                    if (instant.instant === "X") {
+                    if (instant.instant === "X")
                         instant.instant = "D";
-                    }
                 case "R":
-                    if (instant.instant === "R") {
+                    if (instant.instant === "R")
                         instant.instant = "C";
-                    }
                 case "D":
                 case "C":
                 case "Y":
@@ -541,16 +698,18 @@ export class Vim {
                     this.setMode(instant.instant === "C" ? VimMode.Insert : VimMode.Normal, true);
                     break;
 
-
                 case "u":
                 case "U":
                     await active.edit(e => {
                         const text = active.document.getText(active.selection);
                         e.replace(active.selection, instant.instant === "U" ? text.toUpperCase() : text.toLowerCase());
-                    })
+                    });
                     active.selection = new vscode.Selection(active.selection.start, active.selection.start);
                     this.setMode(VimMode.Normal, true);
                     break;
+
+                default:
+                    return;
             }
         } else if (command.type === "replace") {
             const text = active.document.getText(active.selection).replace(/[^\r\n]/g, (command as ReplaceAction).replace);
@@ -572,16 +731,15 @@ export class Vim {
 
     private async normalKey(key: string) {
         if (key === "<esc>") {
-            vscode.window.activeTextEditor.selections = vscode.window.activeTextEditor.selections.map(s => 
+            vscode.window.activeTextEditor.selections = vscode.window.activeTextEditor.selections.map(s =>
                 new vscode.Selection(s.active, s.active)
             );
             return this.setMode(VimMode.Normal, true);
         }
 
         const command = this.getNormalCommand(key);
-        if (!command) {
+        if (!command)
             return;
-        }
 
         this.doNormalAction(command);
         this.lastAction = command;
@@ -618,7 +776,7 @@ export class Vim {
                 case "o":
                     this.setMode(VimMode.Insert, true);
                     await vscode.commands.executeCommand("editor.action.insertLineAfter");
-                    return; 
+                    return;
                 case "O":
                     this.setMode(VimMode.Insert, true);
                     await vscode.commands.executeCommand("editor.action.insertLineBefore");
@@ -626,12 +784,11 @@ export class Vim {
                 case "gI":
                     active.selection = new vscode.Selection(selStart.line, 0, selStart.line, 0);
                     return this.setMode(VimMode.Insert, true);
-                case "Q":
-                    return this.setMode(VimMode.Jump, true);
                 case "v":
                     return this.setMode(VimMode.Visual, true);
+                default:
+                    return this.setMode(VimMode.Normal, true);
             }
-            this.setMode(VimMode.Normal, true);
         } else if (command.type === "operator") {
             this.operatorPending = (command as OperatorAction).operator;
             this.operatorCount = this.enteredCount;
@@ -677,7 +834,7 @@ export class Vim {
                         start: active.document.offsetAt(selStart),
                         end: active.document.offsetAt(endLine.range.end),
                         linewise: false,
-                        inclusive: false
+                        inclusive: false,
                     });
                     break;
                 case "Y":
@@ -733,189 +890,7 @@ export class Vim {
                     this.setMode(VimMode.Normal, true);
                     this.documentChanged(null);
                     break;
-            }
-        }
-    }
-
-    public updateSelection(selections: vscode.Selection[]) {
-        if (this.mode === VimMode.Visual && selections.every(s => s.start.isEqual(s.end))) {
-            this.setMode(VimMode.Normal, true);
-        } else if ((this.mode === VimMode.Normal || this.mode === VimMode.OperatorPending) &&
-            selections.some(s => !s.start.isEqual(s.end))) {
-            this.setMode(VimMode.Visual, true);
-        }
-        this.cleanSelection(selections);
-    }
-
-    public cleanSelection(selections: vscode.Selection[]) {
-        if (this.mode === VimMode.Normal || this.mode === VimMode.OperatorPending) {
-            let updateSelections = false;
-            let newSelections = selections.map(s => {
-                if (s.start.character === 0 || s.start.compareTo(s.end) !== 0) {
-                    return s;
-                }
-
-                if (vscode.window.activeTextEditor.document.validatePosition(s.start.translate(0, 1)).character === s.start.character) {
-                    updateSelections = true;
-                    return new vscode.Selection(s.start.line, s.start.character - 1, s.start.line, s.start.character - 1);
-                } else {
-                    return s;
-                }
-            });
-            if (updateSelections) {
-                vscode.window.activeTextEditor.selections = newSelections;
-            }
-        }
-    }
-
-    public getNormalCommand(key: string): VimAction {
-        if (this.pseudoMode === "f") {
-            this.pseudoMode = null;
-            this.lastLineSearch = { motion: this.pseudoModeParameter, target: key };
-            return { type: "motion", motion: this.pseudoModeParameter, target: key, count: Number(this.enteredCount || "1") };
-        }
-
-        if (this.pseudoMode === "g") {
-            this.pseudoMode = null;            
-            if (key === "g") {
-                return { type: "motion", motion: "gg", count: Number(this.enteredCount || "0") };
-            }
-            if (key === "I") {
-                return { type: "changeMode", newMode: "gI", count: 1 };
-            }
-            this.setMode(VimMode.Normal, true);
-            return null;
-        }
-
-        if (this.pseudoMode === "r") {
-            this.pseudoMode = null;
-            return { type: "replace", replace: key, count: Number(this.enteredCount || "1") };
-        }
-
-        if (this.pseudoMode === "Q") {
-            return this.jumpKey(key);
-        }
-
-        if (this.pseudoMode === '"') {
-            this.registerTarget = key;
-            this.pseudoMode = null;
-            return null;
-        }
-
-        if (this.pseudoMode === "m") {
-            this.pseudoMode = null;
-            return { type: "instant", instant: "m", count: 1, register: this.registerTarget, target: key };
-        }
-
-        if (this.pseudoMode === "`" || this.pseudoMode === "'") {
-            const markType = this.pseudoMode;
-            this.pseudoMode = null;
-            return { type: "motion", motion: markType, count: 1, target: key }; 
-        }
-
-        // Object
-        if (this.pseudoMode === "o") {
-            this.pseudoMode = null;
-            if (key.match(/^[wWsp\]\[\)\(<>t{}"'bB]$/)) {
-                return { type: "object", range: this.objectRange, object: key, count: Number(this.enteredCount || "1") };
-            }
-        }
-
-        if (this.mode === VimMode.OperatorPending) {
-            if (key === this.operatorPending) {
-                return { type: "motion", motion: "line", count: Number(this.enteredCount || "1") };
-            }
-        }
-
-        if (this.mode === VimMode.Visual) {
-            if (key.match(/^[dcCRSsxuUyY]$/)) {
-                return { type: "instant", instant: key, count: Number(this.enteredCount || "1"), register: this.registerTarget };
-            }
-        }
-
-        if (key.match(/^[1-9]$/) || (key === "0" && this.enteredCount.length > 0)) {
-            this.enteredCount += key;
-            return null;
-        }
-
-        // Motion
-        if (key.match(/^[0wWeEhjkl$^bBG\-\n+_;,%]$/)) {
-            if (key === "G" || key === "%") {
-                return { type: "motion", motion: key, count: Number(this.enteredCount || "0") };
-            }
-            return { type: "motion", motion: key, count: Number(this.enteredCount || "1") };
-        }
-
-        if (key.match(/^[fFtT]$/)) {
-            this.pseudoMode = "f";
-            this.pseudoModeParameter = key;
-            return null;
-        }
-
-        if (key.match(/^[grmQ"'`]$/)) {
-            this.pseudoMode = key;
-            return null;
-        }
-
-        if (this.mode === VimMode.Normal) {
-            // Mode switch
-            if (key.match(/^[iIaAoOvV]$/)) {
-                return { type: "changeMode", newMode: key, count: Number(this.enteredCount || "1") };
-            }
-
-            // Operators
-            if (key.match(/^[cdy]$/)) {
-                return { type: "operator", operator: key };
-            }
-
-            // Action
-            if (key.match(/^[upPxXCDYSs]$/)) {
-                return { type: "instant", instant: key, count: Number(this.enteredCount || "1"), register: this.registerTarget };
-            }
-
-            if (key === ".") {
-                this.doNormalAction(this.lastAction);
-                this.setMode(VimMode.Normal, true);
-                return null;
-            }
-        } else if (this.mode === VimMode.Visual || this.mode === VimMode.OperatorPending) {
-            if (key.match(/^[ia]$/)) {
-                this.pseudoMode = "o";
-                this.objectRange = key;
-                return null;
-            }
-        }
-
-        this.setMode(VimMode.Normal, true);
-        return null;
-    }
-
-    public documentChanged(e: vscode.TextDocumentChangeEvent) {
-        if (e) {
-            for (const change of e.contentChanges) {
-                for (const c in this.marks) {
-                    if (!this.marks[c]) {
-                        continue;
-                    }
-                    if (change.range.contains(this.marks[c])) {
-                        this.marks[c] = null;
-                    }
-                }
-            }
-
-            for (const change of e.contentChanges) {
-                let netLines = -Math.abs(change.range.end.line - change.range.start.line) +
-                    (change.text.match(/\n/g) || []).length;
-                const newMarks: { [letter: string]: vscode.Position } = {};
-                for (const c in this.marks) {
-                    if (!this.marks[c] || this.marks[c].isBefore(change.range.start) ||
-                        this.marks[c].isBefore(change.range.end)) {
-                        newMarks[c] = this.marks[c];
-                        continue;
-                    }
-                    newMarks[c] = this.marks[c].translate(netLines, 0);
-                }
-                this.marks = newMarks;
+                default:
             }
         }
     }

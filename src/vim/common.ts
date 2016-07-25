@@ -89,7 +89,7 @@ export class VimDocument {
             start: wordStart,
             end: wordEnd,
             type: wordType,
-        }
+        };
     }
 
     public getWORD(index: number): Word {
@@ -116,7 +116,7 @@ export class VimDocument {
             start: wordStart,
             end: wordEnd,
             type: wordType ? WordType.Text : WordType.Whitespace,
-        }
+        };
     }
 }
 
@@ -139,7 +139,7 @@ export class Position {
         }
 
         const pos = this.document.positionFromLine(this.line + lineDelta, this.column + columnDelta);
-        if (!fix && (pos.line != this.line + lineDelta || pos.column != this.column + columnDelta)) {
+        if (!fix && (pos.line !== this.line + lineDelta || pos.column !== this.column + columnDelta)) {
             return null;
         }
 
@@ -187,7 +187,6 @@ export interface ReplaceAction {
 }
 
 export type VimAction = MotionAction | ChangeModeAction | OperatorAction | ObjectAction | InstantAction | ReplaceAction;
-
 
 export interface Word {
     start: number;
