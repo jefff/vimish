@@ -114,6 +114,9 @@ export class Vim {
             this.indexSet = null;
             this.enteredText = "";
             this.registerTarget = '"';
+            for (const v of Object.keys(this.decorators)) {
+                vscode.window.activeTextEditor.setDecorations(this.decorators[v], []);
+            }
         }
         this.mode = mode;
 
