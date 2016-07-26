@@ -2,8 +2,11 @@
 Vimish is a [Visual Studio Code](http://code.visualstudio.com/) extension that emulates many features of Vim.
 Additionally, it has an experimental EasyMotion/Jumpy like support.
 
-It is still a work in progress and is probably broken in a lot of ways. The code is also in rough shape but hopefully
-that will improve over time.
+Vimish was written to provide an accurate vim experience in vscode after finding other vim plugins for vscode severely lacking in accuracy.
+Vimish currently passes XXX/YYY tests in [this](#TODO) comprehensive test suite, which outdid the second best vim vscode plugin which passed XXX/YYY.
+
+That said it is still a work in progress may be broken in ways the test suite does not catch.
+The code is also not in the best shape but that will improve over time.
 
 ## Example
 
@@ -19,9 +22,9 @@ to uniquely location a position. For example:
 * Complex registers
 * More correct cross-file marks
 * Search motions
-* More Vim accurate undo
+* More accurate Vim undo
 * Custom keybindings
-* A maintainable codebase, maybe even tests.
+* A maintainable codebase
 
 ## Unsupported things that will probably never be supported
 
