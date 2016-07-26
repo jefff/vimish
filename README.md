@@ -5,6 +5,13 @@ Additionally, it has an experimental EasyMotion/Jumpy like support.
 It is still a work in progress and is probably broken in a lot of ways. The code is also in rough shape but hopefully
 that will improve over time.
 
+## Example
+
+The jump motion can be triggered with `Q` followed by a character to search for, followed by as many letters as needed
+to uniquely location a position. For example:
+
+![Example](images/jump_example.gif)
+
 ## Unsupported things that hopefully will be supported one day
 
 * The 'repeat' command (currently works in a very limited capacity)
