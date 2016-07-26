@@ -373,8 +373,9 @@ export class Vim {
 
     private static findEnclosedRange(character: string, index: number, includeEnclosing: boolean, crossNewlines: boolean): Range {
         const doc = vscode.window.activeTextEditor.document.getText();
-        if (doc[index] === character)
+        if (doc[index] === character) {
             // TODO: Count from start of line
+        }
 
         return Vim.findLeftRightRange(character, character, index, includeEnclosing, crossNewlines);
     }
@@ -550,6 +551,8 @@ export class Vim {
         }
 
         if (motion.motion === ";" || motion.motion === ",") {
+            if (!this.lastLineSearch)
+                return null;
             let lineMotion = this.lastLineSearch.motion;
             if (motion.motion === ",") {
                 // Flip the direction of the search
