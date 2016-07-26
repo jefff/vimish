@@ -4,11 +4,23 @@
     "description": "Semi-accurate Vim emulation",
     "version": "0.0.1",
     "publisher": "Jefff",
+    "license": "SEE LICENSE IN LICENSE.md",
+    "bugs": {
+        "url": "https://github.com/jefff/vimish/issues"
+    },
+    "homepage": "https://github.com/jefff/vimish/blob/master/README.md",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/jefff/vimish.git"
+    },
     "engines": {
         "vscode": "^1.0.0"
     },
     "categories": [
         "Other"
+    ],
+    "keywords": [
+        "vim", "easy-motion", "easymotion", "jumpy"
     ],
     "activationEvents": ["*"],
     "main": "./out/src/extension",
