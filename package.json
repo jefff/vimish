@@ -2,7 +2,7 @@
     "name": "vimish",
     "displayName": "Vimish",
     "description": "Semi-accurate Vim emulation",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "publisher": "Jefff",
     "license": "SEE LICENSE IN LICENSE.md",
     "bugs": {
@@ -20,9 +20,14 @@
         "Other"
     ],
     "keywords": [
-        "vim", "easy-motion", "easymotion", "jumpy"
+        "vim",
+        "easy-motion",
+        "easymotion",
+        "jumpy"
     ],
-    "activationEvents": ["*"],
+    "activationEvents": [
+        "*"
+    ],
     "main": "./out/src/extension",
     "contributes": {
         "keybindings": [
