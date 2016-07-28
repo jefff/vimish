@@ -389,6 +389,14 @@ export class Vim {
             };
         }
 
+        if (object.object === "W") {
+            const word = doc.getWORD(index);
+            return {
+                start: word.start,
+                end: word.end,
+            };
+        }
+
         switch (object.object) {
             case '"':
             case "'":
