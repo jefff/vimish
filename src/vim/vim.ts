@@ -55,7 +55,7 @@ export class Vim {
     // A string representing the keys the make up the current command
     private enteredText: string;
     // The last action that was performed on the document
-    private lastAction: VimAction;
+    private lastAction: { action: VimAction, insert: string };
     // The set of indexes that each letter represents in jump mode
     private lastLineSearch: { motion: string, target: string };
     private indexSet: { [letter: string]: number[] };
@@ -301,7 +301,8 @@ export class Vim {
                 return { type: "instant", instant: key, count: Number(this.enteredCount || "1"), register: this.registerTarget };
 
             if (key === ".") {
-                this.doNormalAction(this.lastAction);
+                this.doNormalAction(this.lastAction.action);
+                // TODO: insert this.lastAction.insert
                 this.setMode(VimMode.Normal, true);
                 return null;
             }
@@ -756,7 +757,7 @@ export class Vim {
             return;
 
         this.doNormalAction(command);
-        this.lastAction = command;
+        this.lastAction = { action: command, insert: "" };
     }
 
     private async doNormalAction(command: VimAction) {
