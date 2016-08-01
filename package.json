@@ -35,6 +35,26 @@
                 "key": "Escape",
                 "command": "extension.vimEscape",
                 "when": "editorTextFocus"
+            },
+            {
+                "key": "left",
+                "command": "extension.vimLeft",
+                "when": "editorTextFocus"
+            },
+            {
+                "key": "right",
+                "command": "extension.vimRight",
+                "when": "editorTextFocus"
+            },
+            {
+                "key": "up",
+                "command": "extension.vimUp",
+                "when": "editorTextFocus"
+            },
+            {
+                "key": "down",
+                "command": "extension.vimDown",
+                "when": "editorTextFocus"
             }
         ]
     },

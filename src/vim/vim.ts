@@ -61,6 +61,8 @@ export class Vim {
     private indexSet: { [letter: string]: number[] };
     // The destination register for the currently entered command
     private registerTarget: string;
+    // The last text that was inserted, reset after entering normal mode or moving the cursor
+    private lastInsertedTest: string;
 
     private registers: { [register: string]: VimRegister };
     private marks: { [letter: string]: vscode.Position };
@@ -114,6 +116,7 @@ export class Vim {
             this.indexSet = null;
             this.enteredText = "";
             this.registerTarget = '"';
+            this.lastInsertedTest = "";
             for (const v of Object.keys(this.decorators)) {
                 vscode.window.activeTextEditor.setDecorations(this.decorators[v], []);
             }
@@ -139,6 +142,24 @@ export class Vim {
     }
 
     public async key(key: string) {
+        if (key === "<left>") {
+            this.lastInsertedTest = "";
+            await vscode.commands.executeCommand("cursorLeft");
+            return;
+        } else if (key === "<right>") {
+            this.lastInsertedTest = "";
+            await vscode.commands.executeCommand("cursorRight");
+            return;
+        } else if (key === "<up>") {
+            this.lastInsertedTest = "";
+            await vscode.commands.executeCommand("cursorUp");
+            return;
+        } else if (key === "<down>") {
+            this.lastInsertedTest = "";
+            await vscode.commands.executeCommand("cursorDown");
+            return;
+        }
+
         try {
             switch (this.mode) {
                 case VimMode.Normal:
@@ -164,6 +185,7 @@ export class Vim {
                         this.setMode(VimMode.Normal, true);
                     } else {
                         await vscode.commands.executeCommand("default:type", { text: key });
+                        this.lastInsertedTest += key;
                     }
                     break;
 
